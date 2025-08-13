@@ -8,7 +8,19 @@ from mysql.connector import Error
 # CORS (équivalent des headers PHP)
 # -----------------------------
 app = FastAPI()
+@app.get("/")
+async def get_all_users():
+    conn = get_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection error")
 
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM users")
+    users = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return {"success": True, "users": users}
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # équivalent de Access-Control-Allow-Origin: *
