@@ -17,7 +17,7 @@ app.add_middleware(
 )
 
 # URL de connexion à la base de données
-DATABASE_URL = "mysql+mysqlconnector://root:@localhost:3306/boutique"
+DATABASE_URL = "mysql+mysqlconnector://boutikti_boutique:Haythem00@localhost:3306/boutique"
 
 # Moteur SQLAlchemy
 engine = create_engine(DATABASE_URL)
