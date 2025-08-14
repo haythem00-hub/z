@@ -96,3 +96,41 @@ async def login(request: Request):
         }
     else:
         return {"success": False, "message": "Invalid credentials"}
+@app.post("/register")
+async def register(request: Request):
+    try:
+        raw_body = await request.body()
+        data_dict = json.loads(raw_body.decode("utf-8"))
+        user = RegisterUser(**data_dict)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON format")
+    except TypeError:
+        raise HTTPException(status_code=400, detail="Invalid data structure")
+
+    conn = get_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+    cursor = conn.cursor(dictionary=True)
+
+    # Vérifier si l'utilisateur existe déjà
+    cursor.execute("SELECT * FROM users WHERE username = %s", (user.username,))
+    if cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return {"success": False, "message": "Username already exists"}
+
+    # Insérer l'utilisateur
+    try:
+        cursor.execute(
+            "INSERT INTO users (username, email, phone, password) VALUES (%s, %s, %s, %s)",
+            (user.username, user.email, user.phone, user.password)
+        )
+        conn.commit()
+        return {"success": True, "message": "Registration successful"}
+    except Error as e:
+        print("Erreur insertion:", e)
+        raise HTTPException(status_code=500, detail="Erreur lors de l'inscription")
+    finally:
+        cursor.close()
+        conn.close()        
