@@ -80,7 +80,7 @@ async def register(user: RegisterUser):
 
     try:
         cursor.execute(
-            "INSERT INTO users (name, email, phone, password) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO users (username, email, phone, password) VALUES (%s, %s, %s, %s)",
             (user.name, user.email, user.phone, user.password)  # mot de passe en clair
         )
         conn.commit()
