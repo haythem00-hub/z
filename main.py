@@ -1,38 +1,48 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import mysql.connector
 from mysql.connector import Error
+import json
 
+# -----------------------------
+# Configuration FastAPI + CORS
+# -----------------------------
 app = FastAPI()
 
-# Autoriser toutes les origines et méthodes
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],      # Autoriser toutes les origines
+    allow_methods=["*"],      # Autoriser toutes les méthodes (GET, POST, etc.)
+    allow_headers=["*"],      # Autoriser tous les headers
 )
 
-# Connexion MySQL
-def get_connection():
-    try:
-        return mysql.connector.connect(
-            host="boutikti.online",
-            user="boutikti_boutique",
-            password="Haythem00",
-            database="boutikti_avocat"
-        )
-    except Error as e:
-        print("Erreur de connexion MySQL:", e)
-        return None
-
-# Modèle Login
+# -----------------------------
+# Modèle pour recevoir les données JSON
+# -----------------------------
 class LoginData(BaseModel):
     username: str
     password: str
 
-# Route GET
+# -----------------------------
+# Connexion à la base MySQL
+# -----------------------------
+def get_connection():
+    try:
+        conn = mysql.connector.connect(
+            host="boutikti.online",       # Remplace par ton domaine
+            user="boutikti_boutique",
+            password="Haythem00",
+            database="boutikti_avocat"
+        )
+        return conn
+    except Error as e:
+        print("Erreur de connexion MySQL:", e)
+        return None
+
+# -----------------------------
+# Route pour récupérer tous les utilisateurs
+# -----------------------------
 @app.get("/")
 async def get_all_users():
     conn = get_connection()
@@ -47,9 +57,24 @@ async def get_all_users():
 
     return {"success": True, "users": users}
 
-# Route POST
+# -----------------------------
+# Route de connexion (login)
+# -----------------------------
 @app.post("/login")
-async def login(data: LoginData):
+async def login(request: Request):
+    try:
+        # Lecture du JSON brut
+        raw_body = await request.body()
+        data_dict = json.loads(raw_body.decode("utf-8"))
+
+        # Validation via Pydantic
+        data = LoginData(**data_dict)
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON format")
+    except TypeError:
+        raise HTTPException(status_code=400, detail="Invalid data structure")
+
     if not data.username or not data.password:
         return {"success": False, "message": "Missing username or password"}
 
@@ -63,7 +88,7 @@ async def login(data: LoginData):
     cursor.close()
     conn.close()
 
-    if user and data.password == user["password"]:  # À remplacer par un hash bcrypt
+    if user and data.password == user["password"]:  # Comparaison en clair (à remplacer par un hash)
         return {
             "success": True,
             "message": "Login successful",
