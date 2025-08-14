@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 import mysql.connector
 from mysql.connector import Error
+from passlib.hash import bcrypt
 import json
 
 # -----------------------------
@@ -12,25 +13,31 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],      # Autoriser toutes les origines
-    allow_methods=["*"],      # Autoriser toutes les méthodes (GET, POST, etc.)
-    allow_headers=["*"],      # Autoriser tous les headers
+    allow_origins=["*"],  # Pour dev, en production mettre le domaine Flutter
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # -----------------------------
-# Modèle pour recevoir les données JSON
+# Modèles Pydantic
 # -----------------------------
+class RegisterUser(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+    password: str
+
 class LoginData(BaseModel):
     username: str
     password: str
 
 # -----------------------------
-# Connexion à la base MySQL
+# Connexion MySQL
 # -----------------------------
 def get_connection():
     try:
         conn = mysql.connector.connect(
-            host="boutikti.online",       # Remplace par ton domaine
+            host="boutikti.online",
             user="boutikti_boutique",
             password="Haythem00",
             database="boutikti_avocat"
@@ -41,7 +48,7 @@ def get_connection():
         return None
 
 # -----------------------------
-# Route pour récupérer tous les utilisateurs
+# Liste des utilisateurs
 # -----------------------------
 @app.get("/")
 async def get_all_users():
@@ -50,7 +57,7 @@ async def get_all_users():
         raise HTTPException(status_code=500, detail="Database connection error")
 
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM users")
+    cursor.execute("SELECT id, name, email, phone FROM users")
     users = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -58,18 +65,48 @@ async def get_all_users():
     return {"success": True, "users": users}
 
 # -----------------------------
-# Route de connexion (login)
+# Route d'inscription
+# -----------------------------
+@app.post("/register")
+async def register(user: RegisterUser):
+    conn = get_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+    cursor = conn.cursor()
+
+    # Vérifier si l'email existe déjà
+    cursor.execute("SELECT id FROM users WHERE email = %s", (user.email,))
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Cet email est déjà utilisé")
+
+    # Hasher le mot de passe
+    hashed_password = bcrypt.hash(user.password)
+
+    try:
+        cursor.execute(
+            "INSERT INTO users (name, email, phone, password) VALUES (%s, %s, %s, %s)",
+            (user.name, user.email, user.phone, hashed_password)
+        )
+        conn.commit()
+        return {"success": True, "message": "Inscription réussie !"}
+    except Error as e:
+        print("Erreur insertion:", e)
+        raise HTTPException(status_code=500, detail="Erreur lors de l'inscription")
+    finally:
+        cursor.close()
+        conn.close()
+
+# -----------------------------
+# Route de connexion
 # -----------------------------
 @app.post("/login")
 async def login(request: Request):
     try:
-        # Lecture du JSON brut
         raw_body = await request.body()
         data_dict = json.loads(raw_body.decode("utf-8"))
-
-        # Validation via Pydantic
         data = LoginData(**data_dict)
-
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON format")
     except TypeError:
@@ -83,16 +120,18 @@ async def login(request: Request):
         raise HTTPException(status_code=500, detail="Database connection error")
 
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM users WHERE username = %s", (data.username,))
+    cursor.execute("SELECT * FROM users WHERE email = %s", (data.username,))
     user = cursor.fetchone()
     cursor.close()
     conn.close()
 
-    if user and data.password == user["password"]:  # Comparaison en clair (à remplacer par un hash)
+    if user and bcrypt.verify(data.password, user["password"]):
+        # Ne jamais renvoyer le mot de passe dans la réponse
+        user_info = {k: v for k, v in user.items() if k != "password"}
         return {
             "success": True,
             "message": "Login successful",
-            "user": user
+            "user": user_info
         }
     else:
         return {"success": False, "message": "Invalid credentials"}
