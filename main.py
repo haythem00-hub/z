@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 import mysql.connector
 from mysql.connector import Error
-from passlib.hash import bcrypt
 
 # -----------------------------
 # Configuration FastAPI + CORS
@@ -56,14 +55,10 @@ async def get_all_users():
         raise HTTPException(status_code=500, detail="Database connection error")
 
     cursor = conn.cursor(dictionary=True)
-
-    # ⚠️ Vérifie les noms de colonnes exactes dans ta table
-    cursor.execute("SELECT id, email, phone FROM users")
+    cursor.execute("SELECT id, name, email, phone, password FROM users")  # mot de passe visible
     users = cursor.fetchall()
-
     cursor.close()
     conn.close()
-
     return {"success": True, "users": users}
 
 # -----------------------------
@@ -76,7 +71,6 @@ async def register(user: RegisterUser):
         raise HTTPException(status_code=500, detail="Database connection error")
 
     cursor = conn.cursor()
-
     # Vérifier si l'email existe déjà
     cursor.execute("SELECT id FROM users WHERE email = %s", (user.email,))
     if cursor.fetchone():
@@ -84,13 +78,10 @@ async def register(user: RegisterUser):
         conn.close()
         raise HTTPException(status_code=400, detail="Cet email est déjà utilisé")
 
-    # Hasher le mot de passe
-    hashed_password = bcrypt.hash(user.password)
-
     try:
         cursor.execute(
             "INSERT INTO users (name, email, phone, password) VALUES (%s, %s, %s, %s)",
-            (user.name, user.email, user.phone, hashed_password)
+            (user.name, user.email, user.phone, user.password)  # mot de passe en clair
         )
         conn.commit()
         return {"success": True, "message": "Inscription réussie !"}
@@ -116,8 +107,7 @@ async def login(data: LoginData):
     cursor.close()
     conn.close()
 
-    if user and bcrypt.verify(data.password, user["password"]):
-        # Ne jamais renvoyer le mot de passe dans la réponse
+    if user and data.password == user["password"]:  # comparaison directe
         user_info = {k: v for k, v in user.items() if k != "password"}
         return {"success": True, "message": "Login successful", "user": user_info}
     else:
