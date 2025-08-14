@@ -23,6 +23,11 @@ app.add_middleware(
 class LoginData(BaseModel):
     username: str
     password: str
+class RegisterUser(BaseModel):
+    username: str
+    email: str
+    phone: str
+    password: str
 
 # -----------------------------
 # Connexion à la base MySQL
